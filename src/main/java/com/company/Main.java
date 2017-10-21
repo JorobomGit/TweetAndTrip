@@ -14,9 +14,7 @@ import com.twitter.hbc.httpclient.auth.OAuth1;
 import twitter4j.*;
 import twitter4j.conf.ConfigurationBuilder;
 
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.SQLException;
+import java.sql.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
@@ -25,8 +23,24 @@ import java.util.List;
 public class Main {
 
     public static void main(String[] args) throws TwitterException {
-        //testingTwitter4j();
+    }
 
+    private static void testingDB() {
+        MysqlConnect connection = new MysqlConnect();
+        String sql = "SELECT * FROM `tbl_name`";
+        try {
+            PreparedStatement statement = connection.connect().prepareStatement(sql);
+            ResultSet rs = statement.executeQuery();
+            while(rs.next()){
+                System.out.println(rs.getString("column1"));
+            }
+
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        } finally {
+            connection.disconnect();
+        }
     }
 
     private static void testingTwitter4j() throws TwitterException {

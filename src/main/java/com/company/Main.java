@@ -14,7 +14,12 @@ import com.twitter.hbc.httpclient.auth.OAuth1;
 import twitter4j.*;
 import twitter4j.conf.ConfigurationBuilder;
 
+import javax.xml.transform.Result;
+import java.io.FileInputStream;
+import java.io.IOException;
 import java.sql.*;
+import java.util.ArrayList;
+import java.util.Properties;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
@@ -22,57 +27,132 @@ import java.util.List;
 
 public class Main {
 
-    public static void main(String[] args) throws TwitterException {
+    // init properties object
+    private static Properties properties;
+
+    public static void main(String[] args) throws TwitterException, IOException, SQLException {
+        Twitter tf = getTwitterInstance();
+
+        //1. Get an user name who wrote about travel
+        String userName = getUser("travel", tf).getScreenName();
+        //2. Get all tweets from that user
+        List<Status> userTweets = getTweets(userName, tf, 200);
+        //3. Get all hashtags from those tweets
+        List<String> hashtags = getHashtags(userTweets);
+        //4. Get all countries/cities from those tweets
+        List<String> destinations = getDestinations(userTweets);
+
+
+        System.out.println("For user: " + userName);
+        System.out.println("Tweeted destinations: ");
+        System.out.println(destinations);
     }
 
-    private static void testingDB() {
-        MysqlConnect connection = new MysqlConnect();
-        String sql = "SELECT * FROM `tbl_name`";
+
+
+
+
+    private static List<Status> getTweets(String user, Twitter twitter, Integer max) throws TwitterException {
+        List<Status> statuses = null;
         try {
-            PreparedStatement statement = connection.connect().prepareStatement(sql);
-            ResultSet rs = statement.executeQuery();
-            while(rs.next()){
-                System.out.println(rs.getString("column1"));
-            }
+            Paging paging = new Paging(1, max);
 
-
-        } catch (SQLException e) {
-            e.printStackTrace();
-        } finally {
-            connection.disconnect();
+            statuses = twitter.getUserTimeline(user, paging);
+            System.out.println("Showing @" + user + "'s user timeline.");
+        } catch (TwitterException te) {
+            te.printStackTrace();
+            System.out.println("Failed to get timeline: " + te.getMessage());
+            System.exit(-1);
         }
-    }
-
-    private static void testingTwitter4j() throws TwitterException {
-        ConfigurationBuilder cb = new ConfigurationBuilder();
-        cb.setDebugEnabled(true)
-                .setOAuthConsumerKey("g2VSP0upGyNqI0vz8oZkTsoTo")
-                .setOAuthConsumerSecret("yV9EA3oQhwUcZ9DCA6wiHXWq997H87W0BZl99UNPwa2L2e4gn8")
-                .setOAuthAccessToken("919986650691915776-yFrT4Erbgz1duaDykvaquhVktbpvBtf")
-                .setOAuthAccessTokenSecret("x4AQ3o3Ia11Z0PTaRlEkbW2l2c4k9P7uO8lW8oMSNi07B");
-        TwitterFactory tf = new TwitterFactory(cb.build());
-        Twitter twitter = tf.getInstance();
-
-        Query query = new Query("#viajar");
-        QueryResult result;
-
-        do {
-            result = twitter.search(query);
-            List<Status> tweets = result.getTweets();
-            for (Status tweet : tweets) {
-                System.out.println("@" + tweet.getUser().getScreenName() + " - " + tweet.getText());
-            }
-        } while ((query = result.nextQuery()) != null);
-
-
+        return statuses;
         //STEPS:
         //1. Read tweets from specific hashtags
         //2. Take city or country from those tweets, also pick info from user
         //3. We will need a DB with tables: user, tweet info. User could contain also destination.
         //4. We need also a table with countries and cities to filter those tweets.
+
     }
 
-    private static void testingHBC() throws InterruptedException {
+    private static User getUser(String word, Twitter twitter) throws TwitterException {
+        Query query = new Query(word);
+        QueryResult result = twitter.search(query);
+        User user = null;
+        if(result.getTweets().size() > 0){
+            user = result.getTweets().get(0).getUser();
+        }
+        return user;
+    }
+
+    private static List<String> getHashtags(List<Status> tweets){
+        List<String> hashtags = new ArrayList<>();
+        for (Status status : tweets) {
+            for(HashtagEntity hashtagEntity : status.getHashtagEntities()){
+                hashtags.add(hashtagEntity.getText());
+            }
+        }
+        return hashtags;
+    }
+
+    private static ArrayList<String> getDestinations(List<Status> tweets) throws SQLException {
+        ArrayList<String> destinations = new ArrayList<>();
+        //1. Get our database destinations list
+        ArrayList<String> dbDestinations = getDBDestinations();
+        //2. Compare each city with each tweet to look matches
+        for (String destination: dbDestinations) {
+            for(Status tweet: tweets){
+                if(tweet.getText().contains(destination)){
+                    destinations.add(destination);
+                }
+            }
+        }
+
+        return destinations;
+    }
+
+
+    private static ArrayList<String> getDBDestinations() throws SQLException {
+        ArrayList<String> destinations = new ArrayList<>();
+
+        MysqlConnect connection = new MysqlConnect();
+        try {
+            PreparedStatement statement = connection.connect().prepareStatement("SELECT name FROM `destinations`");
+            ResultSet rs = statement.executeQuery();
+            while(rs.next()){
+                destinations.add(rs.getString("name"));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        } finally {
+            connection.disconnect();
+        }
+
+        return destinations;
+    }
+
+
+    // create properties
+    private static Properties getProperties() throws IOException {
+        if (properties == null) {
+            properties = new Properties();
+            FileInputStream in = new FileInputStream("config/oauth.properties");
+            properties.load(in);
+            in.close();
+        }
+        return properties;
+    }
+
+    private static Twitter getTwitterInstance() throws IOException {
+        ConfigurationBuilder cb = new ConfigurationBuilder();
+        cb.setDebugEnabled(true)
+                .setOAuthConsumerKey(getProperties().getProperty("consumerkey"))
+                .setOAuthConsumerSecret(getProperties().getProperty("consumersecret"))
+                .setOAuthAccessToken(getProperties().getProperty("accesstoken"))
+                .setOAuthAccessTokenSecret(getProperties().getProperty("accesstokensecret"));
+        TwitterFactory tf = new TwitterFactory(cb.build());
+        return tf.getInstance();
+    }
+
+    private static void testingHBC() throws InterruptedException, IOException {
         /** Set up your blocking queues: Be sure to size these properly based on expected TPS of your stream */
         BlockingQueue<String> msgQueue = new LinkedBlockingQueue<String>(100000);
         BlockingQueue<Event> eventQueue = new LinkedBlockingQueue<Event>(1000);
@@ -86,10 +166,10 @@ public class Main {
         hosebirdEndpoint.trackTerms(terms);
 
         // These secrets should be read from a config file
-        Authentication hosebirdAuth = new OAuth1("g2VSP0upGyNqI0vz8oZkTsoTo",
-                "yV9EA3oQhwUcZ9DCA6wiHXWq997H87W0BZl99UNPwa2L2e4gn8",
-                "919986650691915776-yFrT4Erbgz1duaDykvaquhVktbpvBtf",
-                "x4AQ3o3Ia11Z0PTaRlEkbW2l2c4k9P7uO8lW8oMSNi07B");
+        Authentication hosebirdAuth = new OAuth1(getProperties().getProperty("consumerkey"),
+                getProperties().getProperty("consumersecret"),
+                getProperties().getProperty("accesstoken"),
+                getProperties().getProperty("accesstokensecret"));
 
         ClientBuilder builder = new ClientBuilder()
                 .name("Hosebird-Client-01")                              // optional: mainly for the logs

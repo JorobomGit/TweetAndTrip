@@ -14,9 +14,11 @@ import com.twitter.hbc.httpclient.auth.OAuth1;
 import twitter4j.*;
 import twitter4j.conf.ConfigurationBuilder;
 
+import javax.net.ssl.HttpsURLConnection;
 import javax.xml.transform.Result;
-import java.io.FileInputStream;
-import java.io.IOException;
+import java.io.*;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.Properties;
@@ -25,12 +27,15 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 import java.util.List;
 
+
 public class Main {
 
     // init properties object
     private static Properties properties;
 
-    public static void main(String[] args) throws TwitterException, IOException, SQLException {
+    private static final String USER_AGENT = "Mozilla/5.0";
+
+    public static void main(String[] args) throws Exception {
         Twitter tf = getTwitterInstance();
 
         //1. Get an user name who wrote about travel
@@ -46,10 +51,21 @@ public class Main {
         System.out.println("For user: " + userName);
         System.out.println("Tweeted destinations: ");
         System.out.println(destinations);
+
+
+        User user = getUserInfo(userName, tf);
+
+        //getTwitterAdsInstance();
+        System.out.println("Username: " + user.getName());
+        sendGet(getFirstName(user.getName()));
+        saveUser(user);
     }
 
 
 
+    private static User getUserInfo(String user, Twitter twitter) throws TwitterException {
+        return twitter.showUser(user);
+    }
 
 
     private static List<Status> getTweets(String user, Twitter twitter, Integer max) throws TwitterException {
@@ -152,6 +168,12 @@ public class Main {
         return tf.getInstance();
     }
 
+    public static TwitterAds getTwitterAdsInstance() throws IOException {
+        ConfigurationBuilder configurationBuilder = new ConfigurationBuilder();
+        configurationBuilder.setOAuthConsumerSecret("").setOAuthConsumerKey("").setOAuthAccessToken("").setOAuthAccessTokenSecret("git ").setHttpRetryCount(0).setHttpConnectionTimeout(5000);
+        return new TwitterAdsFactory(configurationBuilder.build()).getAdsInstance();
+    }
+
     private static void testingHBC() throws InterruptedException, IOException {
         /** Set up your blocking queues: Be sure to size these properly based on expected TPS of your stream */
         BlockingQueue<String> msgQueue = new LinkedBlockingQueue<String>(100000);
@@ -193,4 +215,141 @@ public class Main {
 
         hosebirdClient.stop();
     }
+
+    // HTTP GET request
+    private static void sendGet(String name) throws Exception {
+
+        String url = "https://api.genderize.io/?name=" + name;
+
+        URL obj = new URL(url);
+        HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+
+        // optional default is GET
+        con.setRequestMethod("GET");
+
+        //add request header
+        con.setRequestProperty("User-Agent", USER_AGENT);
+
+        int responseCode = con.getResponseCode();
+        System.out.println("\nSending 'GET' request to URL : " + url);
+        System.out.println("Response Code : " + responseCode);
+
+        BufferedReader in = new BufferedReader(
+                new InputStreamReader(con.getInputStream()));
+        String inputLine;
+        StringBuffer response = new StringBuffer();
+
+        while ((inputLine = in.readLine()) != null) {
+            response.append(inputLine);
+        }
+        in.close();
+
+        //print result
+        System.out.println(response.toString());
+
+    }
+
+    // HTTP POST request
+    private void sendPost() throws Exception {
+
+        String url = "https://selfsolve.apple.com/wcResults.do";
+        URL obj = new URL(url);
+        HttpsURLConnection con = (HttpsURLConnection) obj.openConnection();
+
+        //add reuqest header
+        con.setRequestMethod("POST");
+        con.setRequestProperty("User-Agent", USER_AGENT);
+        con.setRequestProperty("Accept-Language", "en-US,en;q=0.5");
+
+        String urlParameters = "sn=C02G8416DRJM&cn=&locale=&caller=&num=12345";
+
+        // Send post request
+        con.setDoOutput(true);
+        DataOutputStream wr = new DataOutputStream(con.getOutputStream());
+        wr.writeBytes(urlParameters);
+        wr.flush();
+        wr.close();
+
+        int responseCode = con.getResponseCode();
+        System.out.println("\nSending 'POST' request to URL : " + url);
+        System.out.println("Post parameters : " + urlParameters);
+        System.out.println("Response Code : " + responseCode);
+
+        BufferedReader in = new BufferedReader(
+                new InputStreamReader(con.getInputStream()));
+        String inputLine;
+        StringBuffer response = new StringBuffer();
+
+        while ((inputLine = in.readLine()) != null) {
+            response.append(inputLine);
+        }
+        in.close();
+
+        //print result
+        System.out.println(response.toString());
+
+    }
+
+    private static String getFirstName(String fullName) {
+        return fullName.indexOf(' ') > -1 ? fullName.substring(0, fullName.indexOf(' ')) : fullName;
+    }
+
+    private static void saveUser(User user) throws Exception {
+        System.out.println("User info: " );
+        System.out.println("User name: " + user.getName());
+        System.out.println("User screenName: " + user.getScreenName());
+        System.out.println("User email: " + user.getEmail());
+        System.out.println("User location: " + user.getLocation());
+        System.out.println("User description: " + user.getDescription());
+        System.out.println("User lang: " + user.getLang());
+        System.out.println("User gender: " + 0);
+        System.out.println("User age: " + 0);
+
+        MysqlConnect connection = new MysqlConnect();
+
+        String insertTableSQL = "INSERT INTO person"
+                + "(name, email, screen_name, location, description, lang, gender, age) VALUES"
+                + "(?,?,?,?,?,?,?,?)";
+        PreparedStatement preparedStatement = connection.connect().prepareStatement(insertTableSQL);
+        preparedStatement.setString(1, user.getName());
+        preparedStatement.setString(2, user.getEmail());
+        preparedStatement.setString(3, user.getScreenName());
+        preparedStatement.setString(4, user.getLocation());
+        preparedStatement.setString(5, user.getDescription());
+        preparedStatement.setString(6, user.getLang());
+        preparedStatement.setString(7, getUserGender(getFirstName(user.getName())));
+        preparedStatement.setInt(8, 0);
+
+        // execute insert SQL statement
+        preparedStatement.executeUpdate();
+    }
+
+    // HTTP GET request
+    private static String getUserGender(String name) throws Exception {
+
+        String url = "https://api.genderize.io/?name=" + name;
+
+        URL obj = new URL(url);
+        HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+
+        // optional default is GET
+        con.setRequestMethod("GET");
+
+        //add request header
+        con.setRequestProperty("User-Agent", USER_AGENT);
+
+        BufferedReader in = new BufferedReader(
+                new InputStreamReader(con.getInputStream()));
+        String inputLine;
+        StringBuffer response = new StringBuffer();
+
+        while ((inputLine = in.readLine()) != null) {
+            response.append(inputLine);
+        }
+        in.close();
+
+        JSONObject json = new JSONObject(response.toString());
+        return json.getString("gender");
+    }
+
 }

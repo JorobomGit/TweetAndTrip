@@ -20,12 +20,10 @@ import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.sql.*;
-import java.util.ArrayList;
-import java.util.Properties;
+import java.sql.Date;
+import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
-
-import java.util.List;
 
 
 public class Main {
@@ -36,29 +34,46 @@ public class Main {
     private static final String USER_AGENT = "Mozilla/5.0";
 
     public static void main(String[] args) throws Exception {
-        Twitter tf = getTwitterInstance();
-
-        //1. Get an user name who wrote about travel
-        String userName = getUser("travel", tf).getScreenName();
-        //2. Get all tweets from that user
-        List<Status> userTweets = getTweets(userName, tf, 200);
-        //3. Get all hashtags from those tweets
-        List<String> hashtags = getHashtags(userTweets);
-        //4. Get all countries/cities from those tweets
-        List<String> destinations = getDestinations(userTweets);
 
 
-        System.out.println("For user: " + userName);
-        System.out.println("Tweeted destinations: ");
-        System.out.println(destinations);
+        Timer t = new Timer();
+        t.schedule(new TimerTask() {
+            @Override
+            public void run() {
+                Twitter tf = null;
+                try {
+                    tf = getTwitterInstance();
+                    //RUN EVERY 20 SECONDS
+                    //1. Get an user who wrote about travel
+                    System.out.println("1. GETTING USER");
+                    User user = getUser("travel", tf);
+                    String userName = user.getScreenName();
+                    System.out.println("1.1 Username: " + userName);
 
+                    //2. Get all tweets from that user
+                    System.out.println("2. GETTING TWEETS");
+                    List<Status> userTweets = getTweets(userName, tf, 200);
 
-        User user = getUserInfo(userName, tf);
+                    //3. Save user info into DB
+                    System.out.println("3. SAVING USER INTO DB");
+                    insertUser(user);
 
-        //getTwitterAdsInstance();
-        System.out.println("Username: " + user.getName());
-        sendGet(getFirstName(user.getName()));
-        saveUser(user);
+                    //4. Insert hashtags into DB
+                    System.out.println("4. SAVING TAGS INTO DB");
+                    saveUserTags(user.getId(), userTweets);
+
+                    //4. Insert user destinations into DB
+                    saveUserDestinations(user.getId(), userTweets);
+
+                } catch (IOException e) {
+                    e.printStackTrace();
+                } catch (TwitterException e) {
+                    e.printStackTrace();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        }, 0, 20000);
     }
 
 
@@ -99,42 +114,57 @@ public class Main {
         return user;
     }
 
-    private static List<String> getHashtags(List<Status> tweets){
-        List<String> hashtags = new ArrayList<>();
+    private static HashMap<String, Date> getHashtagsWithDate(List<Status> tweets){
+        HashMap<String, Date> hashtags = new HashMap<>();
         for (Status status : tweets) {
             for(HashtagEntity hashtagEntity : status.getHashtagEntities()){
-                hashtags.add(hashtagEntity.getText());
+                hashtags.put(hashtagEntity.getText(), new Date(status.getCreatedAt().getTime()));
             }
         }
         return hashtags;
     }
 
-    private static ArrayList<String> getDestinations(List<Status> tweets) throws SQLException {
-        ArrayList<String> destinations = new ArrayList<>();
+
+    private static void saveUserTags(Long userId, List<Status> tweets) throws Exception {
+        HashMap<String, Date> hashtags = getHashtagsWithDate(tweets);
+        Integer insertCount = 0;
+        //Insertions limited to 50 per user
+        for (Map.Entry<String, Date> tag: hashtags.entrySet()) {
+            if(insertCount > 50){
+                break;
+            }
+            if(tag.getKey().length() < 50){
+                insertUserTag(userId, tag.getKey(), tag.getValue());
+            }
+            insertCount++;
+        }
+    }
+
+    private static void saveUserDestinations(Long userId, List<Status> tweets) throws Exception {
         //1. Get our database destinations list
-        ArrayList<String> dbDestinations = getDBDestinations();
+        HashMap<Integer, String> dbDestinations = getDBDestinations();
         //2. Compare each city with each tweet to look matches
-        for (String destination: dbDestinations) {
+        for (Map.Entry<Integer, String> destination: dbDestinations.entrySet()) {
             for(Status tweet: tweets){
-                if(tweet.getText().contains(destination)){
-                    destinations.add(destination);
+                if(tweet.getText().contains(destination.getValue())){
+                    insertUserDestination(userId,
+                            destination.getKey(),
+                            new Date(tweet.getCreatedAt().getTime()));
                 }
             }
         }
-
-        return destinations;
     }
 
 
-    private static ArrayList<String> getDBDestinations() throws SQLException {
-        ArrayList<String> destinations = new ArrayList<>();
+    private static HashMap<Integer, String> getDBDestinations() throws SQLException {
+        HashMap<Integer, String> destinations = new HashMap<>();
 
         MysqlConnect connection = new MysqlConnect();
         try {
-            PreparedStatement statement = connection.connect().prepareStatement("SELECT name FROM `destinations`");
+            PreparedStatement statement = connection.connect().prepareStatement("SELECT * FROM `destinations`");
             ResultSet rs = statement.executeQuery();
             while(rs.next()){
-                destinations.add(rs.getString("name"));
+                destinations.put(rs.getInt("id"), rs.getString("name"));
             }
         } catch (SQLException e) {
             e.printStackTrace();
@@ -216,39 +246,6 @@ public class Main {
         hosebirdClient.stop();
     }
 
-    // HTTP GET request
-    private static void sendGet(String name) throws Exception {
-
-        String url = "https://api.genderize.io/?name=" + name;
-
-        URL obj = new URL(url);
-        HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-
-        // optional default is GET
-        con.setRequestMethod("GET");
-
-        //add request header
-        con.setRequestProperty("User-Agent", USER_AGENT);
-
-        int responseCode = con.getResponseCode();
-        System.out.println("\nSending 'GET' request to URL : " + url);
-        System.out.println("Response Code : " + responseCode);
-
-        BufferedReader in = new BufferedReader(
-                new InputStreamReader(con.getInputStream()));
-        String inputLine;
-        StringBuffer response = new StringBuffer();
-
-        while ((inputLine = in.readLine()) != null) {
-            response.append(inputLine);
-        }
-        in.close();
-
-        //print result
-        System.out.println(response.toString());
-
-    }
-
     // HTTP POST request
     private void sendPost() throws Exception {
 
@@ -294,8 +291,8 @@ public class Main {
         return fullName.indexOf(' ') > -1 ? fullName.substring(0, fullName.indexOf(' ')) : fullName;
     }
 
-    private static void saveUser(User user) throws Exception {
-        System.out.println("User info: " );
+    private static void insertUser(User user) throws Exception {
+        /*System.out.println("User info: " );
         System.out.println("User name: " + user.getName());
         System.out.println("User screenName: " + user.getScreenName());
         System.out.println("User email: " + user.getEmail());
@@ -303,31 +300,38 @@ public class Main {
         System.out.println("User description: " + user.getDescription());
         System.out.println("User lang: " + user.getLang());
         System.out.println("User gender: " + 0);
-        System.out.println("User age: " + 0);
+        System.out.println("User age: " + 0);*/
 
         MysqlConnect connection = new MysqlConnect();
+        try{
+            String insertTableSQL = "INSERT INTO person"
+                    + "(id, name, email, screen_name, location, description, lang, gender, age) VALUES"
+                    + "(?,?,?,?,?,?,?,?,?)";
+            PreparedStatement preparedStatement = connection.connect().prepareStatement(insertTableSQL);
+            preparedStatement.setLong(1, user.getId());
+            preparedStatement.setString(2, user.getName());
+            preparedStatement.setString(3, user.getEmail());
+            preparedStatement.setString(4, user.getScreenName());
+            preparedStatement.setString(5, user.getLocation());
+            preparedStatement.setString(6, user.getDescription());
+            preparedStatement.setString(7, user.getLang());
+            preparedStatement.setString(8, getUserGender(getFirstName(user.getName())));
+            preparedStatement.setInt(9, 0);
 
-        String insertTableSQL = "INSERT INTO person"
-                + "(name, email, screen_name, location, description, lang, gender, age) VALUES"
-                + "(?,?,?,?,?,?,?,?)";
-        PreparedStatement preparedStatement = connection.connect().prepareStatement(insertTableSQL);
-        preparedStatement.setString(1, user.getName());
-        preparedStatement.setString(2, user.getEmail());
-        preparedStatement.setString(3, user.getScreenName());
-        preparedStatement.setString(4, user.getLocation());
-        preparedStatement.setString(5, user.getDescription());
-        preparedStatement.setString(6, user.getLang());
-        preparedStatement.setString(7, getUserGender(getFirstName(user.getName())));
-        preparedStatement.setInt(8, 0);
-
-        // execute insert SQL statement
-        preparedStatement.executeUpdate();
+            // execute insert SQL statement
+            preparedStatement.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        } finally {
+            connection.disconnect();
+        }
     }
 
     // HTTP GET request
     private static String getUserGender(String name) throws Exception {
 
-        String url = "https://api.genderize.io/?name=" + name;
+        //String url = "https://api.genderize.io/?name=" + name;
+        String url = "https://gender-api.com/get?name=" + name;
 
         URL obj = new URL(url);
         HttpURLConnection con = (HttpURLConnection) obj.openConnection();
@@ -350,6 +354,48 @@ public class Main {
 
         JSONObject json = new JSONObject(response.toString());
         return json.getString("gender");
+    }
+
+    private static void insertUserTag(Long personId, String tag, Date creationDate) throws Exception {
+
+        MysqlConnect connection = new MysqlConnect();
+        try {
+            String insertTableSQL = "INSERT INTO person_tag"
+                    + "(person_id, tag, created_at) VALUES"
+                    + "(?,?,?)";
+            PreparedStatement preparedStatement = connection.connect().prepareStatement(insertTableSQL);
+            preparedStatement.setLong(1, personId);
+            preparedStatement.setString(2, tag);
+            preparedStatement.setDate(3, creationDate);
+
+            // execute insert SQL statement
+            preparedStatement.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        } finally {
+            connection.disconnect();
+        }
+    }
+
+    private static void insertUserDestination(Long personId, Integer destinationId, Date creationDate) throws Exception {
+
+        MysqlConnect connection = new MysqlConnect();
+        try {
+            String insertTableSQL = "INSERT INTO person_destination"
+                    + "(person_id, destination_id, created_at) VALUES"
+                    + "(?,?,?)";
+            PreparedStatement preparedStatement = connection.connect().prepareStatement(insertTableSQL);
+            preparedStatement.setLong(1, personId);
+            preparedStatement.setInt(2, destinationId);
+            preparedStatement.setDate(3, creationDate);
+
+            // execute insert SQL statement
+            preparedStatement.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        } finally {
+            connection.disconnect();
+        }
     }
 
 }

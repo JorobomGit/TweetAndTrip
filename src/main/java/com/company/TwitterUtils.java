@@ -35,7 +35,6 @@ public class TwitterUtils {
             Paging paging = new Paging(1, max);
 
             statuses = twitter.getUserTimeline(user, paging);
-            System.out.println("Showing @" + user + "'s user timeline.");
         } catch (TwitterException te) {
             te.printStackTrace();
             System.out.println("Failed to get timeline: " + te.getMessage());

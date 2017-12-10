@@ -11,6 +11,7 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.sql.*;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,7 +43,7 @@ public class DatabaseUtils {
         }
     }
 
-    private static String getUserGender(String name) throws Exception {
+    public static String getUserGender(String name) throws Exception {
 
         JSONObject json = new JSONObject();
         //String url = "https://api.genderize.io/?name=" + name;

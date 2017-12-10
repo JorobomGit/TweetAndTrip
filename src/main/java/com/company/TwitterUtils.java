@@ -5,6 +5,7 @@ import twitter4j.conf.ConfigurationBuilder;
 
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 
@@ -43,6 +44,10 @@ public class TwitterUtils {
         return statuses;
     }
 
+    public User getUserByName(String name) throws TwitterException {
+        return twitter.showUser(name);
+    }
+
     /****STEP 1: Get User given a word****/
     public User getUser(String word) throws TwitterException {
         Query query = new Query(word);
@@ -64,5 +69,16 @@ public class TwitterUtils {
                 .setOAuthAccessTokenSecret(getProperties().getProperty("accesstokensecret"));
         TwitterFactory tf = new TwitterFactory(cb.build());
         return tf.getInstance();
+    }
+
+
+    public static ArrayList<String> getUserHashtags(List<Status> tweets){
+        ArrayList<String> hashtags = new ArrayList<>();
+        for (Status status : tweets) {
+            for(HashtagEntity hashtagEntity : status.getHashtagEntities()){
+                hashtags.add(hashtagEntity.getText());
+            }
+        }
+        return hashtags;
     }
 }

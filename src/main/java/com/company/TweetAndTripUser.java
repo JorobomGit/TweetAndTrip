@@ -20,6 +20,34 @@ public class TweetAndTripUser {
         this.hashtags = twitterUtils.getUserHashtags(userTweets);
     }
 
+    static String buildTestString(TweetAndTripUser tweetAndTripUser) throws Exception {
+        List<String> hashtags = tweetAndTripUser.getHashtags();
+        String hashtagsSingleString = parseTags(hashtags);
+        User user = tweetAndTripUser.getUser();
+
+        return parseField(user.getLocation()) + ','
+                + parseField(user.getLang()) + ','
+                + DatabaseUtils.getUserGender(user.getName()) + ','
+                //+ parseField(user.getDescription()) + ','
+                + hashtagsSingleString + ','
+                + "?\n";
+    }
+
+    private static String parseTags(List<String> hashtags) {
+        String singleString = "'";
+        for (String tag: hashtags) {
+            singleString += tag + ' ';
+        }
+        return singleString + "'";
+    }
+
+    /**If field contains blank spaces, single quotes have to be added**/
+    private static String parseField(String field){
+        field = field.length() > 0 ? field : "Spain";
+        field = field.replace("\n", "").replace("\r", "");
+        return field.indexOf(' ') > 0 ? "'" + field + "'" : field;
+    }
+
     public String getUsername() {
         return username;
     }

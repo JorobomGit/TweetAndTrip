@@ -32,15 +32,10 @@ public class TwitterUtils {
     /****STEP 2****/
     public List<Status> getTweets(String user, Integer max) throws TwitterException {
         List<Status> statuses = null;
-        try {
-            Paging paging = new Paging(1, max);
+        Paging paging = new Paging(1, max);
 
-            statuses = twitter.getUserTimeline(user, paging);
-        } catch (TwitterException te) {
-            te.printStackTrace();
-            System.out.println("Failed to get timeline: " + te.getMessage());
-            System.exit(-1);
-        }
+        statuses = twitter.getUserTimeline(user, paging);
+
         return statuses;
     }
 

@@ -2,14 +2,18 @@ package com.company;
 
 import java.io.*;
 
+import fi.foyt.foursquare.api.entities.CompactVenue;
+import twitter4j.JSONObject;
 import twitter4j.Status;
 import twitter4j.TwitterException;
 import twitter4j.User;
 
-import java.util.List;
-import java.util.Timer;
-import java.util.TimerTask;
-import java.util.Random;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.*;
+
+import weka.classifiers.Classifier;
+import weka.classifiers.bayes.NaiveBayesMultinomialText;
 import weka.core.Instances;
 import weka.classifiers.bayes.NaiveBayes;
 import weka.classifiers.Evaluation;
@@ -32,25 +36,58 @@ public class Main {
          * 4. Reuse .model already trained
          * 5. This will give a destination predicted
          */
-        String username = "rihanna";
+        String username = "india";
         TwitterUtils twitterUtils = new TwitterUtils();
+        TweetAndTripUser tweetAndTripUser = new TweetAndTripUser(username, twitterUtils);
+        /**Build file with user name**/
+        buildTestFile(buildTestString(tweetAndTripUser));
 
-        /**Get user tags**/
-        List<Status> userTweets = twitterUtils.getTweets(username, 200);
-        List<String> hashtags = twitterUtils.getUserHashtags(userTweets);
+        /**Classifier with already trained model**/
+        Classifier cls = (Classifier) weka.core.SerializationHelper.read("data/tweetAndTrip.model");
+
+        /**Instances from new file**/
+        Instances instances = getWekaInstance();
+        double value = cls.classifyInstance(instances.get(0));
+        //get the name of the class value
+        String prediction = instances.classAttribute().value((int)value);
+
+        System.out.println("The predicted value of instance " +
+                Integer.toString(0) +
+                ": " + prediction);
+
+        /**FOURSQUARE**/
+        FoursquareUtils foursquareUtils = new FoursquareUtils();
+        ArrayList<CompactVenue> userVenues = new ArrayList<>();
+        int i = 0;
+        /**With user tag and recommended destination**/
+        for (String tag : tweetAndTripUser.getHashtags()) {
+            if(i > 2) { break; }
+            userVenues.addAll(foursquareUtils.searchVenues(prediction, tag));
+            i++;
+        }
+        /***RECOMMENDED DESTINATION BASED ON YOUR INFO:***/
+        System.out.println("FINAL RECOMENDATION: ");
+        System.out.println("For user: " + tweetAndTripUser.getUsername());
+        System.out.println("Destination: " + prediction);
+        for (CompactVenue venue : userVenues) {
+            System.out.println("Venues: " + venue.getName());
+        }
+    }
+
+    private static String buildTestString(TweetAndTripUser tweetAndTripUser) throws Exception {
+        List<String> hashtags = tweetAndTripUser.getHashtags();
         String hashtagsSingleString = parseTags(hashtags);
+        User user = tweetAndTripUser.getUser();
 
-
-        User user = twitterUtils.getUserByName(username);
-        String arffTestData = parseField(user.getLocation()) + ','
+        return parseField(user.getLocation()) + ','
                 + parseField(user.getLang()) + ','
                 + DatabaseUtils.getUserGender(user.getName()) + ','
-                + parseField(user.getDescription()) + ','
+                //+ parseField(user.getDescription()) + ','
                 + hashtagsSingleString + ','
                 + "?\n";
+    }
 
-        System.out.println(arffTestData);
-
+    private static void buildTestFile(String arffTestData) throws IOException {
         // input the file content to the StringBuffer "input"
         BufferedReader file = new BufferedReader(new FileReader("data/tweetAndTripWithDescriptionsTest3.arff"));
         String line;
@@ -70,39 +107,6 @@ public class Main {
         FileOutputStream fileOut = new FileOutputStream("data/tweetAndTripWithDescriptionsTest3.arff");
         fileOut.write(sb.toString().getBytes());
         fileOut.close();
-
-
-        Instances instances = getWekaInstance();
-        NaiveBayes nb = buildNaiveBayesClassifier(getWekaInstance());
-        Evaluation eval = new Evaluation(instances);
-        eval.crossValidateModel(nb, instances, 10, new Random(1));
-
-
-        // Build .arff from new user
-
-        // load unlabeled data
-        Instances unlabeled = new Instances(
-                new BufferedReader(
-                        new FileReader("data/unlabeled.arff")));
-
-        // set class attribute
-        unlabeled.setClassIndex(unlabeled.numAttributes() - 1);
-
-        // create copy
-        Instances labeled = new Instances(unlabeled);
-
-        // label instances
-        /*for (int i = 0; i < unlabeled.numInstances(); i++) {
-            double clsLabel = tree.classifyInstance(unlabeled.instance(i));
-            labeled.instance(i).setClassValue(clsLabel);
-        }
-        // save labeled data
-        BufferedWriter writer = new BufferedWriter(
-                new FileWriter("/some/where/labeled.arff"));
-        writer.write(labeled.toString());
-        writer.newLine();
-        writer.flush();
-        writer.close();*/
     }
 
     private static String parseTags(List<String> hashtags) {
@@ -115,12 +119,14 @@ public class Main {
 
     /**If field contains blank spaces, single quotes have to be added**/
     private static String parseField(String field){
+        field = field.length() > 0 ? field : "default";
+        field = field.replace("\n", "").replace("\r", "");
         return field.indexOf(' ') > 0 ? "'" + field + "'" : field;
     }
 
     private static Instances getWekaInstance() throws IOException {
         BufferedReader reader = new BufferedReader(
-                new FileReader("data/tweetAndTripWithDescriptions.arff"));
+                new FileReader("data/tweetAndTripWithDescriptionsTest3.arff"));
         Instances data = new Instances(reader);
         reader.close();
         // setting class attribute
@@ -129,8 +135,8 @@ public class Main {
     }
 
 
-    private static NaiveBayes buildNaiveBayesClassifier(Instances data) throws Exception {
-        NaiveBayes classifier = new NaiveBayes();
+    private static NaiveBayesMultinomialText buildNaiveBayesMultinomialTextClassifier(Instances data) throws Exception {
+        NaiveBayesMultinomialText classifier = new NaiveBayesMultinomialText();
         classifier.buildClassifier(data);
         return classifier;
     }

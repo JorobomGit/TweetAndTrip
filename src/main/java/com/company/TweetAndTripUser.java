@@ -27,7 +27,7 @@ public class TweetAndTripUser {
 
         return parseField(user.getLocation()) + ','
                 + parseField(user.getLang()) + ','
-                + DatabaseUtils.getUserGender(user.getName()) + ','
+                + DatabaseUtils.getUserGender(user.getName(), DatabaseUtils.url) + ','
                 //+ parseField(user.getDescription()) + ','
                 + hashtagsSingleString + ','
                 + "?\n";
@@ -44,7 +44,7 @@ public class TweetAndTripUser {
     /**If field contains blank spaces, single quotes have to be added**/
     private static String parseField(String field){
         field = field.length() > 0 ? field : "Spain";
-        field = field.replace("\n", "").replace("\r", "");
+        field = field.replace("\n", "").replace("\r", "").replace(",", "");
         return field.indexOf(' ') > 0 ? "'" + field + "'" : field;
     }
 

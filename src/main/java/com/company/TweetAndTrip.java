@@ -40,6 +40,10 @@ public class TweetAndTrip {
                 jsonInString = e.getMessage();
                 res.status(e.getStatusCode());
                 res.body(e.getMessage());
+            } catch (Exception e) {
+                res.status(500);
+                res.body(e.getMessage());
+                jsonInString = e.getMessage();
             }
             return jsonInString;
         });
@@ -81,7 +85,7 @@ public class TweetAndTrip {
             ArrayList<CompactVenue> foursquareVenues = foursquareUtils.searchVenues(prediction, iterator.next());
             for (CompactVenue venue : foursquareVenues) {
                 userVenues.add(new Venue(venue.getName(),
-                        venue.getCategories()[0].getName(),
+                        venue.getCategories().length > 0 ? venue.getCategories()[0].getName() : null,
                         venue.getLocation().getCity()));
             }
         }

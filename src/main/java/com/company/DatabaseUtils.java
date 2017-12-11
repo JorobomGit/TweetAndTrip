@@ -18,7 +18,8 @@ import java.util.Map;
 
 public class DatabaseUtils {
     public static Connection connection;
-
+    //String url = "https://api.genderize.io/?name=" + name;
+    public static final String url = "https://gender-api.com/get?name=";
     /****STEP 3****/
     public static void insertUser(User user) throws Exception {
         try{
@@ -33,7 +34,7 @@ public class DatabaseUtils {
             preparedStatement.setString(5, user.getLocation());
             preparedStatement.setString(6, user.getDescription());
             preparedStatement.setString(7, user.getLang());
-            preparedStatement.setString(8, getUserGender(getFirstName(user.getName())));
+            preparedStatement.setString(8, getUserGender(getFirstName(user.getName()), url));
             preparedStatement.setInt(9, 0);
 
             // execute insert SQL statement
@@ -43,11 +44,9 @@ public class DatabaseUtils {
         }
     }
 
-    public static String getUserGender(String name) throws Exception {
+    public static String getUserGender(String name, String url) throws Exception {
 
         JSONObject json = new JSONObject();
-        //String url = "https://api.genderize.io/?name=" + name;
-        String url = "https://gender-api.com/get?name=" + name;
 
         URL obj = new URL(url);
         HttpURLConnection con = (HttpURLConnection) obj.openConnection();
@@ -73,6 +72,7 @@ public class DatabaseUtils {
 
         } catch (IOException e){
             System.out.println(e);
+            getUserGender(name, "https://api.genderize.io/?name=");
         }
 
         return json.getString("gender");

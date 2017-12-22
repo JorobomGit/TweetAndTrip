@@ -27,9 +27,9 @@ public class TweetAndTrip {
 
     public static void main(String[] args) {
 
-        /**Fill Data**/
+        /*Fill Data*/
         //fillData();
-        /**Recommend destination**/
+        /*Recommend destination*/
         //recommendDestination();
         get("/destination", (req, res) -> {
             res.type("application/json");
@@ -126,22 +126,22 @@ public class TweetAndTrip {
         System.out.println("True positive at " + N + ": " + (1.0*tp/total));
     }
     private static ArrayList<Destination> recommendDestination(String username) throws Exception {
-        /**1. Get user name
+        /*1. Get user name
          * 2. Get location, language, gender, description, tags, ?
          * 3. Build new .arff with those fields
          * 4. Reuse .model already trained
          * 5. This will give a destination predicted
          */
         TwitterUtils twitterUtils = new TwitterUtils();
-        TweetAndTripUser tweetAndTripUser = null;
+        TweetAndTripUser tweetAndTripUser;
         tweetAndTripUser = new TweetAndTripUser(username, twitterUtils);
-        /**Build file with user name**/
+        /*Build file with user name*/
         WekaUtils.buildTestFile(TweetAndTripUser.buildTestString(tweetAndTripUser));
 
-        /**Classifier with already trained model**/
+        /*Classifier with already trained model*/
         Classifier cls = (Classifier) weka.core.SerializationHelper.read("data/tweetAndTrip.model");
 
-        /**Instances from new file**/
+        /*Instances from new file*/
         Instances instances = WekaUtils.getWekaInstance();
         double value = cls.classifyInstance(instances.get(0));
         //Sort all classes by probability
@@ -173,12 +173,12 @@ public class TweetAndTrip {
                 Integer.toString(0) +
                 ": " + prediction);
 
-        /**FOURSQUARE**/
+        /*FOURSQUARE*/
         FoursquareUtils foursquareUtils = new FoursquareUtils();
-        /**With user tag and recommended destination**/
+        /*With user tag and recommended destination*/
         Iterator<String> iterator = tweetAndTripUser.getHashtags().iterator();
         ArrayList<Destination> finalDestinations = new ArrayList<>();
-        /**Limiting foursquare calls to avoid ban**/
+        /*Limiting foursquare calls to avoid ban*/
         for (String dest : destinations) {
             ArrayList<Venue> userVenues = new ArrayList<>();
             while (iterator.hasNext() && userVenues.size() < 2) {
@@ -191,10 +191,10 @@ public class TweetAndTrip {
             }
             finalDestinations.add(new Destination(dest, userVenues));
         }
-        /***RECOMMENDED DESTINATION BASED ON YOUR INFO:***/
-        System.out.println("FINAL RECOMENDATION: ");
+        /*RECOMMENDED DESTINATION BASED ON YOUR INFO:*/
+        /*System.out.println("FINAL RECOMENDATION: ");
         System.out.println("For user: " + tweetAndTripUser.getUsername());
-        System.out.println("Destination: " + prediction);
+        System.out.println("Destination: " + prediction);*/
         /*for (Venue venue : userVenues) {
             System.out.println("Venues: " + venue.name);
         }*/
@@ -207,45 +207,41 @@ public class TweetAndTrip {
         t.schedule(new TimerTask() {
             @Override
             public void run() {
-                /**Runs every 20 seconds**/
+                /*Runs every 20 seconds**/
                 try {
                     TwitterUtils twitterUtils = new TwitterUtils();
                     DatabaseUtils.connection = mysqlConnect.connect();
-                    /**
+                    /*
                      *
                      * PART 1 GET INFO FROM APIs
                      *
-                     * **/
-                    /**1. Get an user who wrote about travel**/
+                     * */
+                    /*1. Get an user who wrote about travel*/
                     System.out.println("1. GETTING USER");
                     User user = twitterUtils.getUser("travel");
                     String userName = user.getScreenName();
                     System.out.println("1.1 Username: " + userName);
-                    /**2. Get all tweets from that user**/
+                    /*2. Get all tweets from that user*/
                     System.out.println("2. GETTING TWEETS");
                     List<Status> userTweets = twitterUtils.getTweets(userName, 200);
 
-                    /**
+                    /*
                      *
                      * PART 2 INSERT INFO INTO DB
                      *
-                     * **/
-                    /**3. Save user info into DB**/
+                     */
+                    /*3. Save user info into DB**/
                     System.out.println("3. SAVING USER INTO DB");
                     DatabaseUtils.insertUser(user);
 
-                    /**4. Insert hashtags into DB**/
+                    /*4. Insert hashtags into DB*/
                     System.out.println("4. SAVING TAGS INTO DB");
                     DatabaseUtils.saveUserTags(user.getId(), userTweets);
 
-                    /**5. Insert user destinations into DB**/
+                    /*5. Insert user destinations into DB*/
                     System.out.println("5. SAVING USER DESTINATIONS INTO DB");
                     DatabaseUtils.saveUserDestinations(user.getId(), userTweets);
 
-                } catch (IOException e) {
-                    e.printStackTrace();
-                } catch (TwitterException e) {
-                    e.printStackTrace();
                 } catch (Exception e) {
                     e.printStackTrace();
                 } finally {

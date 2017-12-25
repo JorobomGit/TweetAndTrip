@@ -8,9 +8,16 @@ import java.io.FileReader;
 import java.io.IOException;
 
 public class WekaUtils {
+
+    /**
+     * buildTestFile
+     * Gets data from user and build .arff file to be readable for Weka
+     * @param arffTestData
+     * @throws IOException
+     */
     static void buildTestFile(String arffTestData) throws IOException {
         // input the file content to the StringBuffer "input"
-        BufferedReader file = new BufferedReader(new FileReader("data/tweetAndTripWithDescriptionsTest3.arff"));
+        BufferedReader file = new BufferedReader(new FileReader("data/tweetAndTripWithDescriptionsTest.arff"));
         String line;
         StringBuffer inputBuffer = new StringBuffer();
 
@@ -25,14 +32,19 @@ public class WekaUtils {
         System.out.println(inputStr); // check that it's inputted right
         StringBuilder sb = new StringBuilder(inputStr);
         sb.replace(inputStr.indexOf("@data") + 6, inputStr.length(), arffTestData);
-        FileOutputStream fileOut = new FileOutputStream("data/tweetAndTripWithDescriptionsTest3.arff");
+        FileOutputStream fileOut = new FileOutputStream("data/tweetAndTripWithDescriptionsTest.arff");
         fileOut.write(sb.toString().getBytes());
         fileOut.close();
     }
 
-    static Instances getWekaInstance() throws IOException {
+    /**
+     * Gets Test Instance
+     * @return
+     * @throws IOException
+     */
+    static Instances getTestInstances() throws IOException {
         BufferedReader reader = new BufferedReader(
-                new FileReader("data/tweetAndTripWithDescriptionsTest3.arff"));
+                new FileReader("data/tweetAndTripWithDescriptionsTest.arff"));
         Instances data = new Instances(reader);
         reader.close();
         // setting class attribute

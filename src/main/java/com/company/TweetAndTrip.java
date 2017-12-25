@@ -3,6 +3,7 @@ package com.company;
 import java.io.*;
 
 import com.google.gson.Gson;
+import fi.foyt.foursquare.api.FoursquareApiException;
 import fi.foyt.foursquare.api.entities.CompactVenue;
 import twitter4j.Status;
 import twitter4j.TwitterException;
@@ -30,7 +31,6 @@ public class TweetAndTrip {
         /*Fill Data*/
         //fillData();
         /*Recommend destination*/
-        //recommendDestination();
         get("/destination", (req, res) -> {
             res.type("application/json");
             String name = req.queryParams("name");
@@ -38,7 +38,6 @@ public class TweetAndTrip {
             try {
                 ArrayList<Destination> destinations = recommendDestination(name);
                 Gson gson = new Gson();
-
                 jsonInString = gson.toJson(destinations);
             } catch (TwitterException e){
                 e.printStackTrace();
@@ -101,7 +100,7 @@ public class TweetAndTrip {
             List<Double> probs = new ArrayList<>(map.keySet());
             Collections.sort(probs, Collections.reverseOrder());
             int n = 0;
-/*            for (Double d: probs){
+           for (Double d: probs){
                 for (Integer idx: map.get(d)){
                     if (n >= N){
                         break;
@@ -113,7 +112,7 @@ public class TweetAndTrip {
                     }
                     n++;
                 }
-            }*/
+            }
             for (Double d: probs){
                 for (Integer idx: map.get(d)){
                     if (n >= N){
@@ -125,61 +124,90 @@ public class TweetAndTrip {
         }
         System.out.println("True positive at " + N + ": " + (1.0*tp/total));
     }
+
+    /**
+     * recommendDestination
+     * Given an username, recommends Destinations, including venues on that object.
+     * @param username User username
+     * @return ArrayList<Destination>
+     * @throws Exception exception
+     */
     private static ArrayList<Destination> recommendDestination(String username) throws Exception {
-        /*1. Get user name
-         * 2. Get location, language, gender, description, tags, ?
-         * 3. Build new .arff with those fields
-         * 4. Reuse .model already trained
-         * 5. This will give a destination predicted
-         */
+        /*Get user*/
         TwitterUtils twitterUtils = new TwitterUtils();
-        TweetAndTripUser tweetAndTripUser;
-        tweetAndTripUser = new TweetAndTripUser(username, twitterUtils);
-        /*Build file with user name*/
+        TweetAndTripUser tweetAndTripUser = new TweetAndTripUser(username, twitterUtils);
+        /*Get user instances*/
+        Instances instances = getUserInstances(tweetAndTripUser);
+        /*Get user recommendedDestinations*/
+        ArrayList<String> recommendedDestinations = getNRecommendedDestinations(instances, MAX_DESTINATIONS);
+
+        /*Get user recommendedDestinations with Venues*/
+        return getDestinationsWithVenues(tweetAndTripUser, recommendedDestinations);
+
+        //TODO GET TRUE POSITIVES TO GET REAL CLASSIFICATION
+        //TODO REFACTOR INTO .JAR APP
+        //TODO SPA ANGULAR 5
+    }
+
+    /**
+     * Builds user test file and get instances for Weka
+     * @param tweetAndTripUser User tweetAndTrip format
+     * @return Instances instances
+     * @throws Exception exception
+     */
+    private static Instances getUserInstances(TweetAndTripUser tweetAndTripUser) throws Exception {
+        /*Build test file with user name and gets instance*/
         WekaUtils.buildTestFile(TweetAndTripUser.buildTestString(tweetAndTripUser));
+        return WekaUtils.getTestInstances();
+    }
 
-        /*Classifier with already trained model*/
+    /**
+     * getNRecommendedDestinations
+     * Gets N recommended destinations based on trained model with Weka library.
+     * @param instances instances
+     * @param maxDestinations max number of destinations to recommend
+     * @return ArrayList<String> destinations
+     * @throws Exception exception
+     */
+    private static ArrayList<String> getNRecommendedDestinations(Instances instances, int maxDestinations) throws Exception {
+    /*Classifier with already trained model*/
         Classifier cls = (Classifier) weka.core.SerializationHelper.read("data/tweetAndTrip.model");
-
-        /*Instances from new file*/
-        Instances instances = WekaUtils.getWekaInstance();
-        double value = cls.classifyInstance(instances.get(0));
-        //Sort all classes by probability
-
-        //1. Get all probabilities into a hashmap
+        /*Get hashmap with index, probability sorted*/
         Map<Integer, Double> classesProbability = new HashMap<>();
         double[] distributionForInstance = cls.distributionForInstance(instances.get(0));
         for(int i = 0; i < distributionForInstance.length; i++){
               classesProbability.put(i, distributionForInstance[i]);
         }
-        //2. Sort hashmap
-        //JAVA 8 SORTING
-        //TODO REFACTOR INTO ARRAYLIST
+        /*Sort hashmap*/
         Map<Integer, Double> result = classesProbability.entrySet().stream()
                 .sorted(Map.Entry.comparingByValue(Comparator.reverseOrder()))
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,
                         (oldValue, newValue) -> oldValue, LinkedHashMap::new));
 
-        //get the name of the classes value
-        //3. Get classes
+        /*Get top classes*/
         ArrayList<String> destinations = new ArrayList<>();
-
-        for(int i = 0; i < MAX_DESTINATIONS; i++){
+        for(int i = 0; i < maxDestinations; i++){
             destinations.add(instances.classAttribute().value(new ArrayList<>(result.keySet()).get(i)));
         }
-        String prediction = instances.classAttribute().value((int)value);
+        return destinations;
+    }
 
-        System.out.println("The predicted value of instance " +
-                Integer.toString(0) +
-                ": " + prediction);
-
-        /*FOURSQUARE*/
+    /**
+     * getDestinationsWithVenues
+     * Adds venues to destinations with foursquare API
+     * @param tweetAndTripUser User tweetAndTrip format
+     * @param recommendedDestinations recommended destinations
+     * @return ArrayList<String> destinations with venues
+     * @throws FoursquareApiException exception
+     * @throws IOException exception
+     */
+    private static ArrayList<Destination> getDestinationsWithVenues(TweetAndTripUser tweetAndTripUser, ArrayList<String> recommendedDestinations) throws FoursquareApiException, IOException {
         FoursquareUtils foursquareUtils = new FoursquareUtils();
         /*With user tag and recommended destination*/
         Iterator<String> iterator = tweetAndTripUser.getHashtags().iterator();
         ArrayList<Destination> finalDestinations = new ArrayList<>();
         /*Limiting foursquare calls to avoid ban*/
-        for (String dest : destinations) {
+        for (String dest : recommendedDestinations) {
             ArrayList<Venue> userVenues = new ArrayList<>();
             while (iterator.hasNext() && userVenues.size() < 2) {
                 ArrayList<CompactVenue> foursquareVenues = foursquareUtils.searchVenues(dest, iterator.next());
@@ -189,19 +217,25 @@ public class TweetAndTrip {
                             venue.getLocation().getCity()));
                 }
             }
+            if(userVenues.size() == 0){
+                ArrayList<CompactVenue> foursquareVenues = foursquareUtils.searchVenues(dest, null);
+                for (CompactVenue venue : foursquareVenues) {
+                    userVenues.add(new Venue(venue.getName(),
+                            venue.getCategories().length > 0 ? venue.getCategories()[0].getName() : null,
+                            venue.getLocation().getCity()));
+                }
+            }
             finalDestinations.add(new Destination(dest, userVenues));
         }
-        /*RECOMMENDED DESTINATION BASED ON YOUR INFO:*/
-        /*System.out.println("FINAL RECOMENDATION: ");
-        System.out.println("For user: " + tweetAndTripUser.getUsername());
-        System.out.println("Destination: " + prediction);*/
-        /*for (Venue venue : userVenues) {
-            System.out.println("Venues: " + venue.name);
-        }*/
-        //TODO GET TRUE POSITIVES TO GET REAL CLASSIFICATION
         return finalDestinations;
     }
 
+    /**
+     * fillData
+     * Method to get more entries for the database
+     * Get users that tweeted something about #travel
+     * Inserts them, with their tags and destinations
+     */
     private static void fillData() {
         Timer t = new Timer();
         t.schedule(new TimerTask() {
@@ -211,35 +245,21 @@ public class TweetAndTrip {
                 try {
                     TwitterUtils twitterUtils = new TwitterUtils();
                     DatabaseUtils.connection = mysqlConnect.connect();
-                    /*
-                     *
-                     * PART 1 GET INFO FROM APIs
-                     *
-                     * */
+
                     /*1. Get an user who wrote about travel*/
-                    System.out.println("1. GETTING USER");
                     User user = twitterUtils.getUser("travel");
                     String userName = user.getScreenName();
-                    System.out.println("1.1 Username: " + userName);
+
                     /*2. Get all tweets from that user*/
-                    System.out.println("2. GETTING TWEETS");
                     List<Status> userTweets = twitterUtils.getTweets(userName, 200);
 
-                    /*
-                     *
-                     * PART 2 INSERT INFO INTO DB
-                     *
-                     */
                     /*3. Save user info into DB**/
-                    System.out.println("3. SAVING USER INTO DB");
                     DatabaseUtils.insertUser(user);
 
                     /*4. Insert hashtags into DB*/
-                    System.out.println("4. SAVING TAGS INTO DB");
                     DatabaseUtils.saveUserTags(user.getId(), userTweets);
 
                     /*5. Insert user destinations into DB*/
-                    System.out.println("5. SAVING USER DESTINATIONS INTO DB");
                     DatabaseUtils.saveUserDestinations(user.getId(), userTweets);
 
                 } catch (Exception e) {

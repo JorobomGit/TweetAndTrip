@@ -17,7 +17,7 @@ public class WekaUtils {
      */
     static void buildTestFile(String arffTestData) throws IOException {
         // input the file content to the StringBuffer "input"
-        BufferedReader file = new BufferedReader(new FileReader("data/tweetAndTripWithDescriptionsTest.arff"));
+        BufferedReader file = new BufferedReader(new FileReader("data/tweetAndTripSingleTagTest.arff"));
         String line;
         StringBuffer inputBuffer = new StringBuffer();
 
@@ -32,7 +32,7 @@ public class WekaUtils {
         System.out.println(inputStr); // check that it's inputted right
         StringBuilder sb = new StringBuilder(inputStr);
         sb.replace(inputStr.indexOf("@data") + 6, inputStr.length(), arffTestData);
-        FileOutputStream fileOut = new FileOutputStream("data/tweetAndTripWithDescriptionsTest.arff");
+        FileOutputStream fileOut = new FileOutputStream("data/tweetAndTripSingleTagTest.arff");
         fileOut.write(sb.toString().getBytes());
         fileOut.close();
     }
@@ -44,7 +44,7 @@ public class WekaUtils {
      */
     static Instances getTestInstances() throws IOException {
         BufferedReader reader = new BufferedReader(
-                new FileReader("data/tweetAndTripWithDescriptionsTest.arff"));
+                new FileReader("data/tweetAndTripSingleTagTest.arff"));
         Instances data = new Instances(reader);
         reader.close();
         // setting class attribute

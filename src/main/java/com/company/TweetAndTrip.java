@@ -17,20 +17,55 @@ import weka.classifiers.Evaluation;
 import weka.classifiers.bayes.NaiveBayesMultinomialText;
 import weka.core.Instance;
 import weka.core.Instances;
+import weka.filters.Filter;
 import weka.filters.unsupervised.instance.RemovePercentage;
 
+import static org.netlib.lapack.Slacon.i;
 import static spark.Spark.*;
 
 public class TweetAndTrip {
 
-    private static final int MAX_DESTINATIONS = 5;
+    private static final int DEFAULT_N = 5;
+    private static final int MAX_DESTINATIONS = 350;
     private static MysqlConnect mysqlConnect = new MysqlConnect();
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
+        boolean exit = false;
+        do {
+            Scanner scanner = new Scanner(System.in);
+            System.out.println("Please, select option:");
+            System.out.println("Option \t Description");
+            System.out.println("1 \t\t Collect more data from Twitter (Database server must be running)");
+            System.out.println("2 \t\t Evaluate top N");
+            System.out.println("3 \t\t Run API");
+            System.out.println("4 \t\t Exit");
+            int app = scanner.nextInt();
 
-        /*Fill Data*/
-        //fillData();
-        /*Recommend destination*/
+            switch (app) {
+                case 1:
+                    fillData();
+                    break;
+                case 2:
+                    System.out.println("Select N (1-350)");
+                    int inputN = scanner.nextInt();
+                    Integer N = inputN > 1 ? inputN : DEFAULT_N;
+                    evaluateTopN("data/tweetAndTripSingleTag.arff", N);
+                    break;
+                case 3:
+                    getDestination();
+                    break;
+                case 4:
+                    System.out.println("Have a nice trip!");
+                    exit = true;
+                    break;
+                default:
+                    System.out.println("Invalid option");
+
+            }
+        } while(!exit);
+    }
+
+    private static void getDestination() {
         get("/destination", (req, res) -> {
             res.type("application/json");
             String name = req.queryParams("name");
@@ -55,6 +90,11 @@ public class TweetAndTrip {
     }
 
     private static void evaluateTopN(String fullData, int N) throws Exception {
+        if(Double.isNaN((double) N) || N < 1 || N > MAX_DESTINATIONS){
+            System.out.println("N must be between 1-350");
+            return;
+        }
+        System.out.println("Loading... Please, be patient!");
         boolean doCV=false;
         BufferedReader in = new BufferedReader(new FileReader(fullData));
         Instances data = new Instances(in);
@@ -69,60 +109,33 @@ public class TweetAndTrip {
         }
 
         RemovePercentage filter = new RemovePercentage();
-        filter.setPercentage(0.8);
         filter.setInputFormat(data);
-        Instances test=filter.getOutputFormat();
+        filter.setPercentage(80);
+        Instances test = Filter.useFilter(data, filter);
+
+        filter = new RemovePercentage();
         filter.setInvertSelection(true);
-        Instances train=filter.getOutputFormat();
+        filter.setInputFormat(data);
+        filter.setPercentage(80);
+        Instances train = Filter.useFilter(data, filter);
 
         Classifier cls = new NaiveBayesMultinomialText();
         cls.buildClassifier(train);
 
-        int tp=0;
-        int total=0;
-
+        int truePositives=0;
+        int partialTest = 0;
         for (Instance i: test){
-            total++;
-            double[] dist = cls.distributionForInstance(i);
-            int c = i.classIndex();
-            //List<Integer> dests = getSortedDestinationIds(dist);
-            List<Integer> ids = new ArrayList<>();
-            // calculate top N
-            Map<Double, Set<Integer>> map = new HashMap<>();
-            for (int j=0; j<dist.length; j++){
-                Set<Integer> idx = map.get(dist[j]);
-                if (idx==null){
-                    idx = new HashSet<>();
-                    map.put(dist[j], idx);
-                }
-                idx.add(j);
-            }
-            List<Double> probs = new ArrayList<>(map.keySet());
-            Collections.sort(probs, Collections.reverseOrder());
-            int n = 0;
-           for (Double d: probs){
-                for (Integer idx: map.get(d)){
-                    if (n >= N){
-                        break;
-                    }
-                    if(idx == c){
-                        // match: success
-                        tp++;
-                        break;
-                    }
-                    n++;
-                }
-            }
-            for (Double d: probs){
-                for (Integer idx: map.get(d)){
-                    if (n >= N){
-                        break;
-                    }
-                    ids.add(idx);
+            ArrayList<String> recommendedDestinations = getNRecommendedDestinations(i, N, cls);
+            partialTest++;
+           for (String destination: recommendedDestinations){
+                if(destination.equals(i.classAttribute().value((int) i.value(i.classIndex())))){
+                    truePositives++;
+                    System.out.println("truePositive " + truePositives + " of " + partialTest);
+                    break;
                 }
             }
         }
-        System.out.println("True positive at " + N + ": " + (1.0*tp/total));
+        System.out.println("True positive at " + N + ": " + (1.0*truePositives/test.size()));
     }
 
     /**
@@ -139,7 +152,7 @@ public class TweetAndTrip {
         /*Get user instances*/
         Instances instances = getUserInstances(tweetAndTripUser);
         /*Get user recommendedDestinations*/
-        ArrayList<String> recommendedDestinations = getNRecommendedDestinations(instances, MAX_DESTINATIONS);
+        ArrayList<String> recommendedDestinations = getNRecommendedDestinations(instances.get(0), DEFAULT_N, null);
 
         /*Get user recommendedDestinations with Venues*/
         return getDestinationsWithVenues(tweetAndTripUser, recommendedDestinations);
@@ -164,17 +177,17 @@ public class TweetAndTrip {
     /**
      * getNRecommendedDestinations
      * Gets N recommended destinations based on trained model with Weka library.
-     * @param instances instances
+     * @param instance instance
      * @param maxDestinations max number of destinations to recommend
      * @return ArrayList<String> destinations
      * @throws Exception exception
      */
-    private static ArrayList<String> getNRecommendedDestinations(Instances instances, int maxDestinations) throws Exception {
+    private static ArrayList<String> getNRecommendedDestinations(Instance instance, int maxDestinations, Classifier auxCls) throws Exception {
     /*Classifier with already trained model*/
-        Classifier cls = (Classifier) weka.core.SerializationHelper.read("data/tweetAndTrip.model");
+        Classifier cls = auxCls != null ? auxCls : (Classifier) weka.core.SerializationHelper.read("data/tweetAndTrip.model");
         /*Get hashmap with index, probability sorted*/
         Map<Integer, Double> classesProbability = new HashMap<>();
-        double[] distributionForInstance = cls.distributionForInstance(instances.get(0));
+        double[] distributionForInstance = cls.distributionForInstance(instance);
         for(int i = 0; i < distributionForInstance.length; i++){
               classesProbability.put(i, distributionForInstance[i]);
         }
@@ -187,7 +200,7 @@ public class TweetAndTrip {
         /*Get top classes*/
         ArrayList<String> destinations = new ArrayList<>();
         for(int i = 0; i < maxDestinations; i++){
-            destinations.add(instances.classAttribute().value(new ArrayList<>(result.keySet()).get(i)));
+            destinations.add(instance.classAttribute().value(new ArrayList<>(result.keySet()).get(i)));
         }
         return destinations;
     }

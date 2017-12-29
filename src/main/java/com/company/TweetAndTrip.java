@@ -48,8 +48,7 @@ public class TweetAndTrip {
                 case 2:
                     System.out.println("Select N (1-350)");
                     int inputN = scanner.nextInt();
-                    Integer N = inputN > 1 ? inputN : DEFAULT_N;
-                    evaluateTopN("data/tweetAndTripSingleTag.arff", N);
+                    evaluateTopN("data/tweetAndTripSingleTag.arff", inputN);
                     break;
                 case 3:
                     getDestination();

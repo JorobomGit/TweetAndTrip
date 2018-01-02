@@ -28,7 +28,6 @@ public class TweetAndTripUser {
         return parseField(user.getLocation()) + ','
                 + parseField(user.getLang()) + ','
                 + DatabaseUtils.getUserGender(user.getName(), DatabaseUtils.url) + ','
-                //+ parseField(user.getDescription()) + ','
                 + hashtagsSingleString + ','
                 + "?\n";
     }

@@ -17,6 +17,8 @@ import java.util.List;
 import java.util.Map;
 
 public class DatabaseUtils {
+    private static final int MAX_TAG_LENGTH = 50;
+    private static final int MAX_TAG_INSERT_PER_USER = 50;
     public static Connection connection;
     //String url = "https://api.genderize.io/?name=" + name;
     public static final String url = "https://gender-api.com/get?name=";
@@ -48,7 +50,7 @@ public class DatabaseUtils {
 
         JSONObject json = new JSONObject();
 
-        URL obj = new URL(url);
+        URL obj = new URL(url + name);
         HttpURLConnection con = (HttpURLConnection) obj.openConnection();
 
         // optional default is GET
@@ -88,10 +90,10 @@ public class DatabaseUtils {
         Integer insertCount = 0;
         //Insertions limited to 50 per user
         for (Map.Entry<String, Date> tag: hashtags.entrySet()) {
-            if(insertCount > 50){
+            if(insertCount > MAX_TAG_INSERT_PER_USER){
                 break;
             }
-            if(tag.getKey().length() < 50){
+            if(tag.getKey().length() < MAX_TAG_LENGTH){
                 insertUserTag(userId, tag.getKey(), tag.getValue());
             }
             insertCount++;

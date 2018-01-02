@@ -52,7 +52,7 @@ public class TweetAndTrip {
                     break;
                 case 3:
                     getDestination();
-                    break;
+                    return;
                 case 4:
                     System.out.println("Have a nice trip!");
                     exit = true;
@@ -155,10 +155,6 @@ public class TweetAndTrip {
 
         /*Get user recommendedDestinations with Venues*/
         return getDestinationsWithVenues(tweetAndTripUser, recommendedDestinations);
-
-        //TODO GET TRUE POSITIVES TO GET REAL CLASSIFICATION
-        //TODO REFACTOR INTO .JAR APP
-        //TODO SPA ANGULAR 5
     }
 
     /**

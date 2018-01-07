@@ -216,9 +216,16 @@ public class TweetAndTrip {
         ArrayList<Destination> finalDestinations = new ArrayList<>();
         /*Limiting foursquare calls to avoid ban*/
         for (String dest : recommendedDestinations) {
+            int nullCounter = 0;
             ArrayList<Venue> userVenues = new ArrayList<>();
             while (iterator.hasNext() && userVenues.size() < 2) {
                 ArrayList<CompactVenue> foursquareVenues = foursquareUtils.searchVenues(dest, iterator.next());
+                if(foursquareVenues.size() == 0){
+                    nullCounter++;
+                }
+                if(nullCounter > 10){
+                    break;
+                }
                 for (CompactVenue venue : foursquareVenues) {
                     userVenues.add(new Venue(venue.getName(),
                             venue.getCategories().length > 0 ? venue.getCategories()[0].getName() : null,
